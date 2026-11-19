@@ -197,27 +197,13 @@ python3 pro.py accounts.txt --no-switch
 
 <table>
 <tr>
-<td align="center"><b>2 群</b><br><img src="assets/wechat-group.jpg" width="220" alt="2 群"></td>
-<td align="center"><b>3 群</b><br><img src="assets/wechat-group3.jpg" width="220" alt="3 群"></td>
-<td align="center"><b>4 群</b><br><img src="assets/wechat-group4.jpg" width="220" alt="4 群"></td>
-</tr>
-<tr>
-<td align="center"><b>5 群</b><br><img src="assets/wechat-group5.jpg" width="220" alt="5 群"></td>
-<td align="center"><b>6 群</b><br><img src="assets/wechat-group6.jpg" width="220" alt="6 群"></td>
-<td align="center"><b>7 群</b><br><img src="assets/wechat-group7.jpg" width="220" alt="7 群"></td>
-</tr>
-<tr>
-<td align="center"><b>8 群</b><br><img src="assets/wechat-group8.jpg" width="220" alt="8 群"></td>
-<td align="center"><b>9 群</b><br><img src="assets/wechat-group9.jpg" width="220" alt="9 群"></td>
-<td align="center"><b>10 群</b><br><img src="assets/wechat-group10.jpg" width="220" alt="10 群"></td>
-</tr>
-<tr>
 <td align="center"><b>11 群</b><br><img src="assets/wechat-group11.jpg" width="220" alt="11 群"></td>
 <td align="center"><b>12 群</b><br><img src="assets/wechat-group12.png" width="220" alt="12 群"></td>
 <td align="center"><b>13 群</b><br><img src="assets/wechat-group13.png" width="220" alt="13 群"></td>
 </tr>
 <tr>
 <td align="center"><b>14 群</b><br><img src="assets/wechat-group14.png" width="220" alt="14 群"></td>
+<td align="center"><b>15 群</b><br><img src="assets/wechat-group15.jpg" width="220" alt="15 群"></td>
 </tr>
 </table>
 
