@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Ultra 一年免费 —— 极简版
+"""AI Pro 一年免费 —— 极简版
 
 只做一件事：让 Google One 把 12 个月免费试用的 offer 亮出来，确认 0 元，开好。
 
@@ -27,7 +27,7 @@ ADB_LIST = [
 ]
 PKG = "com.google.android.apps.subscriptions.red"   # Google One
 PLAY = "com.android.vending"                        # Play 商店
-SKU = "g1.play.20tb"                                # Ultra 20TB，$99.99/月
+SKU = "g1.2tb.ai.subs_variant"                                # AI Pro 5TB，$19.99/月
 MODULE = "/data/local/tmp/module.apk"               # 计费库载体
 
 ADB = None
@@ -278,8 +278,8 @@ def confirm(password=""):
                     break
             return True
 
-        if "US$99.99" in text and "订阅" in text:
-            warn("收银台显示 US$99.99，不是 0 元，放弃")
+        if "US$19.99" in text and "订阅" in text:
+            warn("收银台显示 US$19.99，不是 0 元，放弃")
             adb("shell", "input keyevent 4")
             return False
         time.sleep(2)
@@ -293,7 +293,7 @@ def check_result():
                  f"-d 'https://play.google.com/store/account/subscriptions'")
     time.sleep(9)
     text = screen_text()
-    if "Ultra" in text or "Google One" in text:
+    if "Pro" in text or "Google One" in text:
         ok("订阅页有记录，打开看看：即将扣款日期应该是明年")
     else:
         warn("订阅页没看到记录")
@@ -342,12 +342,12 @@ def run(password, auto=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Ultra 一年免费 · 极简版")
+    ap = argparse.ArgumentParser(description="AI Pro 一年免费 · 极简版")
     ap.add_argument("--check", action="store_true", help="只检查环境")
     ap.add_argument("--password", default="", help="账号密码，收银台复验时自动填")
     ap.add_argument("--yes", action="store_true", help="跳过账号确认")
     a = ap.parse_args()
-    print("Ultra 一年免费 · 极简版")
+    print("AI Pro 一年免费 · 极简版")
     if a.check:
         do_check()
     else:
@@ -356,7 +356,7 @@ def main():
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Ultra 一年免费 —— 极简版
+"""AI Pro 一年免费 —— 极简版
 
 只做一件事：让 Google One 把 12 个月免费试用的 offer 亮出来，确认 0 元，开好。
 
@@ -383,7 +383,7 @@ ADB_LIST = [
 ]
 PKG = "com.google.android.apps.subscriptions.red"   # Google One
 PLAY = "com.android.vending"                        # Play 商店
-SKU = "g1.play.20tb"                                # Ultra 20TB，$99.99/月
+SKU = "g1.2tb.ai.subs_variant"                                # AI Pro 5TB，$19.99/月
 MODULE = "/data/local/tmp/module.apk"               # 计费库载体
 
 ADB = None
@@ -626,8 +626,8 @@ def confirm(password=""):
                     break
             return True
 
-        if "US$99.99" in text and "订阅" in text:
-            warn("收银台显示 US$99.99，不是 0 元，放弃")
+        if "US$19.99" in text and "订阅" in text:
+            warn("收银台显示 US$19.99，不是 0 元，放弃")
             adb("shell", "input keyevent 4")
             return False
         time.sleep(2)
@@ -641,7 +641,7 @@ def check_result():
                  f"-d 'https://play.google.com/store/account/subscriptions'")
     time.sleep(9)
     text = screen_text()
-    if "Ultra" in text or "Google One" in text:
+    if "Pro" in text or "Google One" in text:
         ok("订阅页有记录，打开看看：即将扣款日期应该是明年")
     else:
         warn("订阅页没看到记录")
@@ -690,12 +690,12 @@ def run(password, auto=False):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Ultra 一年免费 · 极简版")
+    ap = argparse.ArgumentParser(description="AI Pro 一年免费 · 极简版")
     ap.add_argument("--check", action="store_true", help="只检查环境")
     ap.add_argument("--password", default="", help="账号密码，收银台复验时自动填")
     ap.add_argument("--yes", action="store_true", help="跳过账号确认")
     a = ap.parse_args()
-    print("Ultra 一年免费 · 极简版")
+    print("AI Pro 一年免费 · 极简版")
     if a.check:
         do_check()
     else:
@@ -704,9 +704,9 @@ def main():
 
 
 # 内嵌：注入脚本与计费模块，别改
-FRIDA_JS = r'''// 借 Google One 进程调 BillingClient，把 Ultra 的免费试用 offer 拿出来
+FRIDA_JS = r'''// 借 Google One 进程调 BillingClient，把 AI Pro 的免费试用 offer 拿出来
 var loader = null, ctx = null, client = null;
-var SKU = "g1.play.20tb";
+var SKU = "g1.2tb.ai.subs_variant";
 
 function use(v) { Java.classFactory.loader = v; }
 function send2(o) { send(o); }

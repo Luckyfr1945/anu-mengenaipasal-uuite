@@ -1,25 +1,52 @@
-# google-ultra
+# google-pro
 
-[简体中文](README.md) | English
+English | [简体中文](README.md)
 
-Google One ships a 12-month free trial for **AI Ultra**. It never shows up in any UI — not on the plans page, not in the app. It only exists inside the offers returned by Play Billing. This repo gets that offer, opens the Play checkout with it, and stops at $0.
+> **Update**: a double-click wizard was added — `start.command` on Mac, `start.bat` on Windows. The main target is now **AI Pro 5TB** (entry `pro.py`); no Android phone needed, a MuMu emulator works too. Ultra can't be opened right now (its offers were pulled / accounts get a region block).
 
-Two ways to use it: a single HTML page with no install, or a Python script that talks to your phone.
+Google One ships a free trial for **AI Pro (5 TB)** that never shows up in any UI. It only exists inside the offers returned by Play Billing. This script pulls that offer, opens the Play checkout with it, and stops at $0.
 
 ## What you get
 
-**Ultra 5x — 20 TB, 12 months at $0.** Cancel before the trial ends and you never pay.
-
-After activation the Play subscription page reads:
+**AI Pro 5TB, 12 months free**, cancel before the trial ends and you never pay.
 
 ```
-Next payment    Starts 2027-11-17
-                US$99.99/month
+product  g1.2tb.ai.subs_variant
+offer    12months-eft
+phase 1  0 / P1Y
+then     US$19.99/mo
 ```
 
-That date is 12 months out. Nothing is charged today.
+On some accounts that SKU is rejected as "already subscribed" (it is a legacy mapping). The script then falls back to the three-month offer:
 
-There is also a 30 TB tier (20x). Its offers exist too, but Play re-checks eligibility at checkout and most accounts get "You're not eligible for a free trial". The script will not click that.
+```
+product  g1.play.2tb.ai
+offer    eft-3mo
+```
+
+If neither works, the account is not eligible.
+
+## Three hard requirements
+
+| Requirement | What happens without it |
+|---|---|
+| Play country set (US) | Google One refuses to open at all |
+| A payment method attached | The checkout cannot start |
+| No Google One subscription ever | "You're already subscribed", even with an empty subscription list |
+
+The third one is the trap: Play remembers history, not current state.
+
+## ~~What you get — Ultra~~
+
+~~**Ultra 5x — 20 TB, 12 months at $0.** Cancel before the trial ends and you never pay. After activation the Play subscription page reads "Next payment — Starts 2027-11-17, US$99.99/month". That date is 12 months out; nothing is charged today.~~
+
+~~There is also a 30 TB tier (20x). Its offers exist too, but Play re-checks eligibility at checkout and most accounts get "You're not eligible for a free trial". The script will not click that.~~
+
+(Ultra's trial offers have been pulled — the code stays but can't open them for now. AI Pro 5TB above is the active path.)
+
+## Easiest — double-click (no terminal)
+
+Double-click `start.command` on Mac or `start.bat` on Windows. A wizard checks your environment, lets you paste accounts, opens each one, and prints a result table with the report path. No Android phone? The first step walks you through connecting a MuMu emulator. The last menu item (or `--advanced`) drops back to the command line below.
 
 ## Option A — the web page
 
@@ -33,12 +60,13 @@ That's it. No install, no root, no cable.
 
 ## Option B — the script
 
-Needs a rooted Android phone connected over USB, plus Python and Frida.
+Needs a rooted Android phone over USB — or a MuMu emulator (MuMu Player 12 on Windows, MuMu Pro on Mac) with ROOT enabled in its settings — plus Python and Frida. The wizard above sets the emulator up for you; frida-server's architecture is auto-picked (x86_64 for MuMu on Windows, arm64 for MuMu on Mac and real phones).
 
 ```bash
 pip3 install frida
-python3 ultra0.py --check     # checks adb, root, frida-server, module
-python3 ultra0.py accounts.txt
+python3 pro.py --check        # checks adb, root, frida-server, module
+
+python3 pro.py accounts.txt
 ```
 
 Account file, one per line, fields separated by four dashes:
@@ -62,9 +90,9 @@ python3 ultra0.py --account "someone@gmail.com:password"
 Options:
 
 ```bash
---plan 5x      # 20 TB only
---plan 20x     # 30 TB only (most accounts are not eligible)
---plan auto    # default: check both, take the longest free period
+--plan pro     # default: AI Pro 5TB
+--plan 5x      # Ultra 20 TB (offers pulled, backup only)
+--plan 20x     # Ultra 30 TB (offers pulled, backup only)
 --no-add       # account is already on the phone
 --no-switch    # don't switch Play accounts, only verify the current one
 ```
@@ -73,9 +101,9 @@ Why the script: it pulls the offer from the phone's own Play client, so the brow
 
 ## How it works
 
-Google One is a Play Billing client itself, so it can already open the Play purchase sheet. The script injects Frida into that process, loads a BillingClient build through `DexClassLoader`, and asks Play what offers exist for `g1.play.20tb`.
+Google One is a Play Billing client itself, so it can already open the Play purchase sheet. The script injects Frida into that process, loads a BillingClient build through `DexClassLoader`, and asks Play what offers exist for AI Pro 5TB (`g1.2tb.ai.subs_variant`, `g1.play.2tb.ai`).
 
-Play answers with five: four with a $0 first phase (`eft-1month` through `eft-12month`) and one at full price. The script picks the longest free period and calls `launchBillingFlow` on the main thread with that offer token.
+Play answers with several offers; some have a $0 first phase (`12months-eft`, P1Y) and some are full price. The script picks the longest free period and calls `launchBillingFlow` on the main thread with that offer token.
 
 Two hard requirements for the trial, straight from Play's side:
 
@@ -97,10 +125,14 @@ Miss either one and checkout says "not eligible". And once a trial has been init
 ## Repo layout
 
 ```
+start.command          double-click launcher (Mac)
+start.bat              double-click launcher (Windows)
+wizard.py              foolproof wizard (env check + batch + result table)
 web/index.html         web tool (Chinese)
 web/en.html            web tool (English)
 simple/ultra.py        minimal script, one file
-ultra0.py              full script: batch, plan selection, account switching
+ultra0.py              full implementation: batch, plan selection, account switching
+pro.py                 AI Pro entry point, same as ultra0.py --plan pro
 assets/                WeChat group QR codes (Chinese community)
 ```
 

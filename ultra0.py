@@ -414,13 +414,15 @@ def launch_app() -> int:
 
 
 def build_js(plan: str = "auto") -> str:
-    """按 plan 选择要查询的商品：5x=20TB，20x=30TB（隐藏带试用 ID）。"""
+    """按 plan 选择要查询的商品：
+    5x / 20x = Ultra（20TB / 30TB），pro = AI Pro 5TB。
+    """
     js = FRIDA_JS
     if plan == "20x":
-        js = js.replace('var PRODUCTS=["g1.play.20tb","g1.play.ai.pro","g1.30tb"];',
+        js = js.replace('var PRODUCTS=["g1.2tb.ai.subs_variant","g1.play.2tb.ai","g1.2tb.ai"];',
                         'var PRODUCTS=["g1.play.ai.pro","g1.ai.pro","g1.30tb"];')
     elif plan == "5x":
-        js = js.replace('var PRODUCTS=["g1.play.20tb","g1.play.ai.pro","g1.30tb"];',
+        js = js.replace('var PRODUCTS=["g1.2tb.ai.subs_variant","g1.play.2tb.ai","g1.2tb.ai"];',
                         'var PRODUCTS=["g1.play.20tb"];')
     return js
 
@@ -625,8 +627,8 @@ def main():
     ap.add_argument("--no-add", action="store_true", help="跳过自动加号（账号已在手机上）")
     ap.add_argument("--no-switch", action="store_true",
                     help="不自动切号，只校验当前 Play 账号是否为目标号")
-    ap.add_argument("--plan", default="auto", choices=["auto", "5x", "20x"],
-                    help="auto=两档都查挑最长；5x=Ultra 20TB；20x=Ultra 30TB")
+    ap.add_argument("--plan", default="auto", choices=["auto", "pro", "5x", "20x"],
+                    help="pro/auto=AI Pro 5TB（默认）；5x=Ultra 20TB；20x=Ultra 30TB")
     a = ap.parse_args()
 
     ADB = find_adb()
@@ -683,7 +685,7 @@ entry = main
 # ---------- 内嵌资源（勿改） ----------
 FRIDA_JS = r'''// Ultra0 注入脚本：多商品查询 → 自动挑最长免费试用 → 主线程拉起收银台
 var dexLoader=null, ctxRef=null, clientRef=null;
-var PRODUCTS=["g1.play.20tb","g1.play.ai.pro","g1.30tb"];   // 5x / 20x(带试用) / 20x(另一档)
+var PRODUCTS=["g1.2tb.ai.subs_variant","g1.play.2tb.ai","g1.2tb.ai"];   // AI Pro 5TB
 var PREFER="";        // 空=自动挑最长；可传 "eft-12month" 等
 function L(v){ Java.classFactory.loader=v; }
 function S(o){ send(o); }
