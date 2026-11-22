@@ -18,12 +18,34 @@ accounts.txt 每行一个号：
 脚本会自动：推 frida-server、推 BillingClient 模块、查 offer、用 eft-12month 拉起收银台，
 只有在确认金额为 0 时才点「订阅」。
 """
-import argparse, base64, hashlib, hmac, json, os, re, select, struct, subprocess, sys, threading, time
+import argparse, base64, hashlib, hmac, json, lzma, os, re, select, struct, subprocess, sys, tempfile, threading, time, urllib.request
 from pathlib import Path
 
 # 人工确认闸门：网页版点「我已完成，继续」，命令行按回车
 HUMAN_EVENT = threading.Event()
 WAITING = {"on": False, "msg": ""}
+
+
+def _stdin_ready() -> bool:
+    """跨平台非阻塞检测标准输入是否有回车。"""
+    if os.name == "nt":
+        try:
+            import msvcrt
+            if msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch in ("\r", "\n"):
+                    return True
+        except Exception:
+            return False
+        return False
+    try:
+        r, _, _ = select.select([sys.stdin], [], [], 0.0)
+        if r:
+            sys.stdin.readline()
+            return True
+    except Exception:
+        return False
+    return False
 
 
 def wait_human(msg: str, timeout: int = 600) -> bool:
@@ -35,15 +57,9 @@ def wait_human(msg: str, timeout: int = 600) -> bool:
     HUMAN_EVENT.clear()
     end = time.time() + timeout
     while time.time() < end:
-        if HUMAN_EVENT.is_set():
+        if HUMAN_EVENT.is_set() or _stdin_ready():
             break
-        try:
-            r, _, _ = select.select([sys.stdin], [], [], 0.5)
-            if r:
-                sys.stdin.readline()
-                break
-        except Exception:
-            time.sleep(0.5)
+        time.sleep(0.25)
     WAITING["on"] = False
     print("▶  继续执行", flush=True)
     return True
@@ -124,6 +140,18 @@ def ensure_root():
         sys.exit("❌ 设备没有 root 权限，脚本需要 root 才能注入。")
 
 
+def _frida_arch() -> str:
+    """按设备 ABI 映射 frida-server 架构名。"""
+    abi = sh("shell", "getprop ro.product.cpu.abi", timeout=15).lower()
+    if "x86_64" in abi:
+        return "x86_64"
+    if "x86" in abi:
+        return "x86"
+    if "arm64" in abi or "v8" in abi:
+        return "arm64"
+    return "arm"
+
+
 def ensure_frida_server():
     running = "frida-server" in sh("shell", "ps -A | grep frida-server || true")
     if running:
@@ -136,12 +164,14 @@ def ensure_frida_server():
             ver = frida.__version__
         except Exception:
             sys.exit("❌ 电脑没装 frida。请先执行：pip3 install frida")
+        arch = _frida_arch()
         url = (f"https://github.com/frida/frida/releases/download/{ver}/"
-               f"frida-server-{ver}-android-arm64.xz")
-        tmp = Path("/tmp/frida-server.xz")
-        subprocess.run(["curl", "-L", "-o", str(tmp), url], check=True)
-        subprocess.run(["xz", "-d", "-f", str(tmp)], check=True)
-        raw = Path("/tmp/frida-server")
+               f"frida-server-{ver}-android-{arch}.xz")
+        tmp = Path(tempfile.gettempdir())
+        xz_path, raw = tmp / "frida-server.xz", tmp / "frida-server"
+        urllib.request.urlretrieve(url, xz_path)
+        with lzma.open(xz_path) as f:
+            raw.write_bytes(f.read())
         sh("push", str(raw), FRIDA_REMOTE, timeout=120)
         sh("shell", f"chmod 755 {FRIDA_REMOTE}")
     sh("shell", f"su -c 'nohup {FRIDA_REMOTE} -D >/dev/null 2>&1 &'", timeout=15)
@@ -158,7 +188,7 @@ def ensure_module_apk():
         ok("计费模块已就位")
         return
     note("正在推送计费模块（一次性）…")
-    tmp = Path("/tmp/module_521.apk")
+    tmp = Path(tempfile.gettempdir()) / "module_521.apk"
     tmp.write_bytes(base64.b64decode(MODULE_B64))
     sh("push", str(tmp), MODULE_REMOTE, timeout=120)
     ok("计费模块已推送")
@@ -413,6 +443,22 @@ def launch_app() -> int:
     return int(pid) if pid.strip().isdigit() else 0
 
 
+def _java_bridge_prefix() -> str:
+    """Frida 17+ 移除了内置 global Java，加载随库打包的 frida-java-bridge shim。"""
+    try:
+        import frida
+        major = int(str(frida.__version__).split(".")[0])
+    except Exception:
+        return ""
+    if major < 17:
+        return ""
+    bridge_xz = Path(__file__).resolve().with_name("frida_java_bridge.js.xz")
+    if not bridge_xz.exists():
+        warn(f"缺少 {bridge_xz.name}，Frida {frida.__version__} 可能报错 Java is not defined")
+        return ""
+    return lzma.decompress(bridge_xz.read_bytes()).decode("utf-8") + "\n"
+
+
 def build_js(plan: str = "auto") -> str:
     """按 plan 选择要查询的商品：
     5x / 20x = Ultra（20TB / 30TB），pro = AI Pro 5TB。
@@ -424,17 +470,34 @@ def build_js(plan: str = "auto") -> str:
     elif plan == "5x":
         js = js.replace('var PRODUCTS=["g1.2tb.ai.subs_variant","g1.play.2tb.ai","g1.2tb.ai"];',
                         'var PRODUCTS=["g1.play.20tb"];')
-    return js
+    return _java_bridge_prefix() + js
+
+
+def _pick_frida_device(frida):
+    """优先按当前 ADB SERIAL 匹配 Frida 设备，避免多设备时选错。"""
+    if SERIAL:
+        try:
+            return frida.get_device(SERIAL, timeout=10)
+        except Exception:
+            pass
+    return frida.get_usb_device(timeout=10)
 
 
 def run_trial(pid: int, wait=90, plan="auto") -> dict:
     import frida
     step("注入计费模块，查询免费试用")
-    dev = frida.get_usb_device(timeout=10)
+    dev = _pick_frida_device(frida)
     sess = dev.attach(pid)
     res = {"offers": [], "launched": None, "purchase": None, "errors": []}
+    done = threading.Event()
 
     def on_msg(m, _):
+        if m.get("type") == "error":
+            desc = m.get("description") or str(m)
+            res["errors"].append({"ev": "frida_error", "m": desc})
+            warn(f"Frida 脚本报错：{desc}")
+            done.set()
+            return
         p = m.get("payload") or {}
         ev = p.get("ev")
         if ev == "offer":
@@ -443,15 +506,29 @@ def run_trial(pid: int, wait=90, plan="auto") -> dict:
         elif ev == "launched":
             res["launched"] = p
             ok(f"已拉起收银台：{p}")
+            done.set()
         elif ev == "purchase_cb":
             res["purchase"] = p
+        elif ev == "setup" and p.get("code") != 0:
+            res["errors"].append(p)
+            warn(f"Billing 初始化失败：code={p.get('code')}")
+            done.set()
+        elif ev == "pd" and (p.get("code") != 0 or not p.get("n")):
+            res["errors"].append(p)
+            warn(f"查询商品失败：code={p.get('code')} n={p.get('n')}")
+            done.set()
         elif ev and ("err" in ev or ev.startswith("no_")):
             res["errors"].append(p)
+            warn(f"注入异常：{p}")
+            if ev in ("no_trial", "no_activity", "boot_err", "query_err", "launch_err", "launch_outer_err"):
+                done.set()
 
     sc = sess.create_script(build_js(plan))
     sc.on("message", on_msg)
     sc.load()
-    time.sleep(wait)
+    done.wait(wait)
+    if res["launched"]:
+        time.sleep(1.5)
     return res
 
 
@@ -486,12 +563,40 @@ def confirm_zero(wait=40, password="") -> dict:
             return out
         if ("订阅" in text or "Subscribe" in text) and ("Ultra" in text or "AI" in text):
             out["text"] = text[:300]
+            if "不符合免费试用条件" in text or "not eligible" in text.lower():
+                out["ineligible"] = True
+                warn("Play：该账号不符合免费试用条件，不点确认")
+                tap_text("关闭", "取消", "Close")
+                return out
+
+            starting_paid = re.search(
+                r"(?:starting\s+today|今天开始)\s*(?:US\$|HK\$|NT\$|\$|€|£)\s*(?!0+(?:[.,]0+)?\b)[\d.,]+",
+                text, re.I
+            )
+            free_trial = (
+                re.search(r"starting\s+today.{0,35}\bfree\s+trial\b", text, re.I)
+                or re.search(r"今天开始.{0,20}免费试用", text)
+                or re.search(r"免费试用\s*\d+\s*(?:个月|年|mo|month)", text, re.I)
+            )
+            if free_trial and not starting_paid:
+                out["price"] = free_trial.group(0)
+                if not (tap_text("订阅", exact=True) or tap_text("Subscribe", exact=True)):
+                    tap_text("订阅", "Subscribe")
+                time.sleep(3)
+                handle_verify(password=password)
+                out["confirmed"] = True
+                ok(f"已确认免费试用（{out['price']}）")
+                return out
+
             m = re.search(r"(US\$|HK\$|NT\$|\$|€|£)\s?([\d.,]+)", text)
             if m:
                 out["price"] = m.group(0)
                 try:
                     if float(m.group(2).replace(",", "")) == 0:
-                        tap_text("订阅", "Subscribe")
+                        if not (tap_text("订阅", exact=True) or tap_text("Subscribe", exact=True)):
+                            tap_text("订阅", "Subscribe")
+                        time.sleep(3)
+                        handle_verify(password=password)
                         out["confirmed"] = True
                         ok("已确认 0 元订阅")
                         return out
@@ -499,14 +604,12 @@ def confirm_zero(wait=40, password="") -> dict:
                     pass
                 warn(f"当前金额 {m.group(0)}，不是 0 元，不点确认")
                 return out
-            if ("不符合免费试用条件" in text) or ("not eligible" in text.lower()):
-                out["ineligible"] = True
-                warn("Play：该账号不符合免费试用条件，不点确认")
-                tap_text("关闭", "取消", "Close"); return out
             if (re.search(r"(US\$|HK\$|NT\$|\$)\s?0(\.00)?\b", text)
-                    or "US$0/月" in text or "US$0.00" in text
-                    or re.search(r"免费试用\s*\d+\s*(个月|年|mo|month)", text)):
-                tap_text("订阅", "Subscribe")
+                    or "US$0/月" in text or "US$0.00" in text):
+                if not (tap_text("订阅", exact=True) or tap_text("Subscribe", exact=True)):
+                    tap_text("订阅", "Subscribe")
+                time.sleep(3)
+                handle_verify(password=password)
                 out["confirmed"] = True
                 ok("已确认免费试用")
                 return out
@@ -521,8 +624,8 @@ def verify() -> str:
                 f"-d 'https://play.google.com/store/account/subscriptions'")
     time.sleep(9)
     text = " | ".join(n["text"] for n in nodes(ui_xml()) if n["text"])
-    if "Ultra" in text:
-        ok("订阅页已显示 Ultra")
+    if any(k in text for k in ("Ultra", "AI Pro", "Google One")):
+        ok("订阅页已显示订阅")
     return text[:500]
 
 
@@ -565,7 +668,8 @@ def process(email, password="", totp_secret="", add=True, card=None, plan="auto"
     if fr["launched"] and fr["launched"].get("code") == 0:
         rec["sheet"] = confirm_zero(password=password)
         rec["subscription_page"] = verify()
-        rec["status"] = "subscribed" if "Ultra" in rec["subscription_page"] else "launched"
+        ok_sub = any(k in rec["subscription_page"] for k in ("Ultra", "AI Pro", "Google One"))
+        rec["status"] = "subscribed" if (ok_sub or rec["sheet"].get("confirmed")) else "launched"
     else:
         rec["status"] = "launch_failed"
     return rec

@@ -4,4 +4,5 @@ accounts.txt
 ultra0-report/
 *.png
 __pycache__/
+node_modules/
 .DS_Store
